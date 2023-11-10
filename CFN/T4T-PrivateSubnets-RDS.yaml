@@ -1,0 +1,125 @@
+Description:  Creates 3 RDS subnets in base vpc
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+    AllowedValues:
+      - ootb-t4t
+      - dev-t4t
+      - qa-t4t
+      - prod-t4t
+
+      
+  SubnetName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+    Default: 'rds'
+  SubnetRangeA:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+    Default: '10.202.0.0/27'
+  SubnetRangeB:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+    Default: '10.202.0.64/27'
+  SubnetRangeC:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+    Default: '10.202.0.96/27'
+
+Resources:
+  rdsSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !ImportValue
+        'Fn::Sub': '${EnvironmentName}-VPCID'
+      AvailabilityZone: !Select [ 0, !GetAZs  '' ]
+      CidrBlock: !Ref SubnetRangeA
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-${SubnetName}-A
+
+  rdsSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !ImportValue
+        'Fn::Sub': '${EnvironmentName}-VPCID'
+      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      CidrBlock: !Ref SubnetRangeB
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-${SubnetName}-B
+
+  rdsSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !ImportValue
+        'Fn::Sub': '${EnvironmentName}-VPCID'
+      AvailabilityZone: !Select [ 2, !GetAZs  '' ]
+      CidrBlock: !Ref SubnetRangeC
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-${SubnetName}-C
+
+  SubnetRouteTableAssociationrds1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref rdsSubnet1
+      RouteTableId: !ImportValue
+          'Fn::Sub': '${EnvironmentName}-Private-Route-Table-1-Id'
+
+  SubnetRouteTableAssociationrds2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref rdsSubnet2
+      RouteTableId: !ImportValue
+          'Fn::Sub': '${EnvironmentName}-Private-Route-Table-1-Id'
+
+  SubnetRouteTableAssociationrds3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref rdsSubnet3
+      RouteTableId: !ImportValue
+          'Fn::Sub': '${EnvironmentName}-Private-Route-Table-1-Id'
+
+Outputs:
+  rdsSubnet1:
+    Description: A reference to the rds subnet in the 1st Availability Zone
+    Value: !Ref rdsSubnet1
+    Export:
+      Name: !Sub '${EnvironmentName}-rds-Subnet-${SubnetName}-A'
+
+  rdsSubnet2:
+    Description: A reference to the rds subnet in the 2nd Availability Zone
+    Value: !Ref rdsSubnet2
+    Export:
+      Name: !Sub '${EnvironmentName}-rds-Subnet-${SubnetName}-B'
+
+  rdsSubnet3:
+    Description: A reference to the rds subnet in the 3rd Availability Zone
+    Value: !Ref rdsSubnet3
+    Export:
+      Name: !Sub '${EnvironmentName}-rds-Subnet-${SubnetName}-C'
+
+
+  rdsSubnet1CIDR:
+    Description: A reference to the rds subnet in the 1st Availability Zone
+    Value: !Ref SubnetRangeA
+    Export:
+      Name: !Sub '${EnvironmentName}-rds-Subnet-${SubnetName}-A-CIDR'
+
+  rdsSubnet2CIDR:
+    Description: A reference to the rds subnet in the 2nd Availability Zone
+    Value: !Ref SubnetRangeB
+    Export:
+      Name: !Sub '${EnvironmentName}-rds-Subnet-${SubnetName}-B-CIDR'
+
+  rdsSubnet3CIDR:
+    Description: A reference to the rds subnet in the 2nd Availability Zone
+    Value: !Ref SubnetRangeC
+    Export:
+      Name: !Sub '${EnvironmentName}-rds-Subnet-${SubnetName}-C-CIDR'

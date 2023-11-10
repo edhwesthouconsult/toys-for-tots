@@ -1,0 +1,36 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Security group for RDS PostgreSQL access by Lambda
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+    AllowedValues:
+    - ootb-t4t
+    - dev-t4t
+    - qa-t4t
+    - prod-t4t
+  VpcId:
+    Description: "ID of the VPC you are deploying RDS into (e.g., vpc-0343606e)."
+    Type: "AWS::EC2::VPC::Id"
+
+Resources:
+
+  RDSPostgresSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Security group for RDS PostgreSQL accessed by Lambda"
+      VpcId: !Ref 'VpcId'  # TODO: Replace with your VPC ID
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '5432'
+          ToPort: '5432'
+          CidrIp: "10.202.0.0/22" 
+      Tags:
+        - Key: Name
+          Value: LambdaToRDSPostgres
+
+Outputs:
+  RDSPostgresSecurityGroupID:
+    Description: Security Group ID
+    Value: !Ref RDSPostgresSecurityGroup

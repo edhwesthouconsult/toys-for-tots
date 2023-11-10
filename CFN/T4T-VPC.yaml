@@ -1,0 +1,362 @@
+Description:  This template deploys a VPC, with a pair of public subnets spread
+  across two Availability Zones. It deploys an internet gateway, with a default
+  route on the public subnets. It deploys a pair of NAT gateways (one in each AZ).
+
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+    - Label:
+        default: 'Parent Stacks'
+      Parameters:
+      - VPCStack
+    - Label:
+        default: 'Flow Logs Parameters'
+      Parameters:
+      - RetentionInDays
+      - TrafficType
+
+Parameters:
+  RetentionInDays:
+    Description: 'Specifies the number of days you want to retain log events.'
+    Type: Number
+    Default: 120
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+  TrafficType:
+    Description: 'The type of traffic to log.'
+    Type: String
+    Default: ALL
+    AllowedValues:
+    - ACCEPT
+    - REJECT
+    - ALL
+  DomainName:
+    Description: DNS Private Zone name
+    Type: String
+    AllowedValues:
+    - internal.ootb.t4t.hugedesigns.net
+    - internal.dev.t4t.hugedesigns.net
+    - internal.qa.t4t.hugedesigns.net
+    - internal.prod.t4t.hugedesigns.net
+  EnvironmentName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+    AllowedValues:
+    - ootb-t4t
+    - dev-t4t
+    - qa-t4t
+    - prod-t4t
+Mappings:
+  IPMap:
+    ootb-t4t:
+      cidr: '10.201.0.0/22'
+      ptr: '201.10-in-addr.arpa'
+      Public1: '10.201.2.0/27'
+      Public2: '10.201.2.32/27'   
+    dev-t4t:
+      cidr: '10.202.0.0/22'
+      ptr: '202.10.in-addr.arpa'
+      Public1: '10.202.2.0/27'
+      Public2: '10.202.2.32/27'
+    qa-t4t:
+      cidr: '10.203.0.0/22'
+      ptr: '203.10.in-addr.arpa'
+      Public1: '10.203.2.0/27'
+      Public2: '10.203.2.32/27'
+    prod-t4t:
+      cidr: '10.204.0.0/22'
+      ptr: '204.10.in-addr.arpa'
+      Public1: '10.204.2.0/27'
+      Public2: '10.204.2.32/27'
+    prod-t4t-dr:
+      cidr: '10.205.0.0/22'
+      ptr: '205.10.in-addr.arpa'
+      Public1: '10.205.2.0/27'
+      Public2: '10.205.2.32/27'
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !FindInMap [ IPMap, !Ref EnvironmentName, cidr ]
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-vpc
+
+  HostedZone:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      HostedZoneConfig:
+        Comment: !Sub VPC
+      Name: !Ref DomainName
+      VPCs:
+        -
+          VPCId: !Ref VPC
+          VPCRegion: !Ref "AWS::Region"
+  HostedZonePTR:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      HostedZoneConfig:
+        Comment: !Sub VPC
+      Name: !FindInMap [ IPMap, !Ref EnvironmentName, ptr ]
+      VPCs:
+        -
+          VPCId: !Ref VPC
+          VPCRegion: !Ref "AWS::Region"
+
+  Role:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: 'vpc-flow-logs.amazonaws.com'
+          Action: 'sts:AssumeRole'
+      Policies:
+      - PolicyName: !Sub ${EnvironmentName}-flowlogs-policy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action:
+            - 'logs:CreateLogStream'
+            - 'logs:PutLogEvents'
+            - 'logs:DescribeLogGroups'
+            - 'logs:DescribeLogStreams'
+            Resource: !GetAtt 'LogGroup.Arn'
+  LogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      RetentionInDays: !Ref RetentionInDays
+  FlowLog:
+    Type: 'AWS::EC2::FlowLog'
+    Properties:
+      DeliverLogsPermissionArn: !GetAtt 'Role.Arn'
+      LogGroupName: !Ref LogGroup
+      ResourceId: !Ref VPC
+      ResourceType: 'VPC'
+      TrafficType: !Ref TrafficType
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-igw
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !FindInMap [ IPMap, !Ref EnvironmentName, Public1 ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-public-a
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      CidrBlock: !FindInMap [ IPMap, !Ref EnvironmentName, Public2 ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-public-b
+
+  NatGateway1EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway1EIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-nat-a
+
+  NatGateway2EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway2EIP.AllocationId
+      SubnetId: !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-nat-b
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-public
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-private-routes-a
+
+  DefaultPrivateRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+
+
+  PrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-private-routes-b
+
+  DefaultPrivateRoute2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway2
+
+  SAPDhcpOptions:
+    Type: AWS::EC2::DHCPOptions
+    Properties:
+        DomainName: !Ref DomainName
+        DomainNameServers:
+          - AmazonProvidedDNS
+        NtpServers:
+          - 10.2.5.1
+        NetbiosNameServers:
+          - 10.2.5.1
+        NetbiosNodeType: 2
+        Tags:
+        - Key: name
+          Value: t4t
+
+  VPCDHCPOptionsAssociation:
+    Type: AWS::EC2::VPCDHCPOptionsAssociation
+    Properties:
+        VpcId: !Ref VPC
+        DhcpOptionsId: !Ref SAPDhcpOptions
+
+Outputs:
+  VPC:
+    Description: A reference to the created VPC
+    Value: !Ref VPC
+    Export:
+      Name: !Sub '${EnvironmentName}-VPCID'
+
+  VpcCIDRBlock:
+    Value: !FindInMap [ IPMap, !Ref EnvironmentName, cidr ]
+    Export:
+      Name: !Sub '${EnvironmentName}-VpcCIDRBlock'
+
+  PublicSubnets:
+    Description: A list of the public subnets
+    Value: !Join [ ",", [ !Ref PublicSubnet1, !Ref PublicSubnet2 ]]
+
+  PublicSubnet1:
+    Description: A reference to the public subnet in the 1st Availability Zone
+    Value: !Ref PublicSubnet1
+    Export:
+      Name: !Sub '${EnvironmentName}-Public-Subnet-1-Id'
+
+  PublicSubnet2:
+    Description: A reference to the public subnet in the 2nd Availability Zone
+    Value: !Ref PublicSubnet2
+    Export:
+      Name: !Sub '${EnvironmentName}-Public-Subnet-2-Id'
+
+  HostedZoneId:
+    Description: ID of the hosted Zone in R53
+    Value: !Ref HostedZone
+    Export:
+      Name: !Sub '${EnvironmentName}-HostedZoneId'
+
+  HostedZoneName:
+    Description: Name of the Hosted zone in R53
+    Value: !Ref DomainName
+    Export:
+      Name: !Sub '${EnvironmentName}-HostedZoneName'
+  
+  HostedZonePTR:
+    Description: Name of the Hosted PTR zone in R53
+    Value: !FindInMap [ IPMap, !Ref EnvironmentName, ptr ]
+    Export:
+      Name: !Sub '${EnvironmentName}-HostedZonePTR'    
+  
+  HostedZoneIdPTR:
+    Description: ID of the hosted Zone in R53
+    Value: !Ref HostedZonePTR
+    Export:
+      Name: !Sub '${EnvironmentName}-HostedZoneIdPTR'
+
+  EIPipaddr:
+    Description: IP Address of Elastic Interface #1
+    Value: !Ref NatGateway1EIP
+    Export:
+      Name: !Sub '${EnvironmentName}-EIP1-IPaddress'
+
+  EIPipaddr2:
+    Description: IP Address of Elastic Interface #2
+    Value: !Ref NatGateway2EIP
+    Export:
+      Name: !Sub '${EnvironmentName}-EIP2-IPaddress'
+
+  PrivateRouteTable1:
+    Description: Name of the Private Route Table1
+    Value: !Ref PrivateRouteTable1
+    Export:
+      Name: !Sub '${EnvironmentName}-Private-Route-Table-1-Id'
+
+  PrivateRouteTable2:
+    Description: Name of the Private Route Table1
+    Value: !Ref PrivateRouteTable2
+    Export:
+      Name: !Sub '${EnvironmentName}-Private-Route-Table-2-Id'

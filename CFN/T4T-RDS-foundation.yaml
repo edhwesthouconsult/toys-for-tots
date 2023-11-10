@@ -1,0 +1,232 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "AWS CloudFormation Template to deploy foundation components for RDS"
+##
+# Resource Provisioned through this CloudFormation Template:
+# 1. RDS Database Subnet Group using 3 Private Subnets of VPC
+# 2. SNS Topic for RDS CloudWatch Alarms using email
+# 3. Cluster Event Subscription for all clusters deployed in AWS Regions
+# 4. Instance Event Subscription for all instances deployed in AWS Regions
+# Note# This Cloud Formation template should be deployed one time before creting RDS Clusters/Instances.
+##
+###############################################################################
+# Parameter groups
+###############################################################################
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Network and SNS configuration
+        Parameters:
+          - VpcId
+          - PrivateSubnetID1
+          - PrivateSubnetID2
+          - PrivateSubnetID3
+          - NotificationList
+      - Label:
+          default: Tags
+        Parameters:
+          - BusinessApplnKey
+          - BusinessApplnId
+          - CostCenter       
+          - EnvironmentType
+          - Confidentiality
+          - Classification      
+    ParameterLabels:
+      PrivateSubnetID1:
+        default: Private subnet ID1
+      PrivateSubnetID2:
+        default: Private subnet ID2
+      PrivateSubnetID3:
+        default: Private subnet ID3
+      VpcId:
+        default: Vpc Id
+      BusinessApplnKey:
+        default: customer Business Application Key  
+      BusinessApplnId:
+        default: customer Business Application Id 
+      CostCenter:
+        default: customer Business Cost Center         
+      EnvironmentType:
+        default: Environment Type
+      Confidentiality:
+        default: Confidentiality classifier
+      Classification:
+        default: Asset Classification        
+###############################################################################
+# Parameters
+###############################################################################
+Parameters:
+  PrivateSubnetID1:
+    Description: ID of the private subnet in Availability Zone A.
+    Type: "AWS::EC2::Subnet::Id"
+  PrivateSubnetID2:
+    Description: ID of the private subnet in Availability Zone B.
+    Type: "AWS::EC2::Subnet::Id"
+  PrivateSubnetID3:
+    Description: ID of the private subnet in Availability Zone C.
+    Type: "AWS::EC2::Subnet::Id"
+  VpcId:
+    Description: "ID of the VPC you are deploying RDS into (e.g., vpc-0343606e)."
+    Type: "AWS::EC2::VPC::Id"
+
+  NotificationList:
+    Type: String
+    Default: "avenjoe@amazon.com"
+    Description: Email address used to configure an SNS topic for sending CloudWatch alarm and RDS event notifications.
+    AllowedPattern: '^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$'
+    ConstraintDescription: Provide a valid email address.
+  BusinessApplnKey:
+    Type: String
+    Default: "Application"
+    Description: customer Business Application Key to ensure alignment in Abacus.    
+  BusinessApplnId:
+    Type: String
+    Default: "Application"
+    Description: customer Business Application Id to ensure alignment in Abacus.       
+  CostCenter:
+    Type: String
+    Default: "IOT"
+    Description: customer Business Cost Center.
+  EnvironmentType:
+    Type: String
+    Description: Environment type for Aurora Cluster.
+    Default: "dev-t4t"
+    AllowedValues:
+      - ootb-t4t
+      - dev-t4t
+      - qa-t4t
+      - prod-t4t
+  Confidentiality:
+    Type: String
+    Default: "Private"
+    Description: Confidentiality classification of the data associated with Aurora Cluster.
+    AllowedValues:
+      - Public
+      - Private
+      - Restricted
+      - Confidential
+  Classification:
+    Type: String
+    Default: "Low"
+    Description: Compliance level for Aurora Cluster.
+    AllowedValues:
+      - Critical
+      - High
+      - Medium
+      - Low      
+# ###############################################################################
+# # Rules : Specified Rules to make sure that 3 distinct private subnets are in use for RDS DB Subnet
+# ###############################################################################
+# Rules:
+#   SubnetsInVPC:
+#     Assertions:
+#       - Assert: !Equals [!ValueOf ["PrivateSubnetID1", "VpcId"], !Ref VpcId]
+#         AssertDescription: "Please provide a private subnet which belongs to the specified VPC"
+#       - Assert: !Equals [!ValueOf ["PrivateSubnetID2", "VpcId"], !Ref VpcId]
+#         AssertDescription: "Please provide a private subnet which belongs to the specified VPC"
+#       - Assert: !Equals [!ValueOf ["PrivateSubnetID3", "VpcId"], !Ref VpcId]
+#         AssertDescription: "Please provide a private subnet which belongs to the specified VPC"        
+#   SubnetsUnique:
+#     Assertions:
+#       - Assert: !Not [!Equals [!Ref PrivateSubnetID1, !Ref PrivateSubnetID2]]
+#         AssertDescription: "Please provide 3 distinct private subnets"
+#       - Assert: !Not [!Equals [!Ref PrivateSubnetID2, !Ref PrivateSubnetID3]]
+#         AssertDescription: "Please provide 3 distinct private subnets"
+#       - Assert: !Not [!Equals [!Ref PrivateSubnetID3, !Ref PrivateSubnetID1]]
+#         AssertDescription: "Please provide 3 distinct private subnets"        
+###############################################################################
+# Resources
+###############################################################################
+Resources:
+  RdsSnsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: "qa-rds-db-sns-topic"
+      TopicName: "qa-rds-db-sns-topic"
+      Subscription:
+        - Endpoint: !Ref NotificationList
+          Protocol: email
+      Tags:
+        - Key: cx-business-application-key
+          Value: !Ref BusinessApplnKey
+        - Key: cx-business-application-id
+          Value: !Ref BusinessApplnId
+        - Key: cx-business-cost-center          
+          Value: !Ref CostCenter             
+        - Key: cx-aws-org-account-environment
+          Value: !Ref EnvironmentType    
+        - Key: cx-security-data-confidentiality
+          Value: !Ref Confidentiality    
+        - Key: cx-security-asset-classification
+          Value: !Ref Classification            
+  RdsDbSubnetGroup:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties:
+      DBSubnetGroupDescription: "RDS database subnet group for DEV"
+      DBSubnetGroupName: "qa-rds-db-subnet-grp"
+      SubnetIds:
+        - !Ref PrivateSubnetID1
+        - !Ref PrivateSubnetID2
+        - !Ref PrivateSubnetID3
+      Tags:
+        - Key: cx-business-application-key
+          Value: !Ref BusinessApplnKey
+        - Key: cx-business-application-id
+          Value: !Ref BusinessApplnId
+        - Key: cx-business-cost-center          
+          Value: !Ref CostCenter             
+        - Key: cx-aws-org-account-environment
+          Value: !Ref EnvironmentType    
+        - Key: cx-security-data-confidentiality
+          Value: !Ref Confidentiality    
+        - Key: cx-security-asset-classification
+          Value: !Ref Classification            
+  RdsClusterEventSubscription:
+    Type: "AWS::RDS::EventSubscription"
+    Properties:
+      EventCategories:
+        - deletion
+        - failure
+        - failover
+        - maintenance
+        - notification
+      SnsTopicArn: !Ref RdsSnsTopic
+      SourceType: "db-cluster"
+  RdsInstanceEventSubscription:
+    Type: "AWS::RDS::EventSubscription"
+    Properties:
+      EventCategories:
+        - availability
+        - configuration change
+        - deletion
+        - failover
+        - failure
+        - maintenance
+        - notification
+        - recovery
+      SnsTopicArn: !Ref RdsSnsTopic
+      SourceType: "db-instance"
+
+###############################################################################
+# Outputs
+###############################################################################
+Outputs:
+  RdsDbSubnetGroup:
+    Description: "RDS Database Subnet Group Name"
+    Value: !Ref RdsDbSubnetGroup
+    Export:
+      Name: DevRdsDbSubnetGroup
+  SnsTopicName:
+    Description: "RDS SNS Topic Name"
+    Value: !GetAtt RdsSnsTopic.TopicName
+  SnsTopicArn:
+    Description: "RDS SNS Topic Arn"
+    Value: !Ref RdsSnsTopic
+    Export:
+      Name: DevRdsSnsTopicArn
+  RdsClusterEventSubscription:
+    Description: "RDS DB Cluster Event Subscription Name"
+    Value: !Ref RdsClusterEventSubscription
+  RdsInstanceEventSubscription:
+    Description: "RDS DB Instance Event Subscription Name"
+    Value: !Ref RdsInstanceEventSubscription
