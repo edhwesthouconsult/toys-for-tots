@@ -1,0 +1,23 @@
+service: wishlist-lambda
+
+provider:
+  name: aws
+  runtime: python3.10
+  stage: dev
+  region: us-east-1
+  environment:
+    BUCKET: wishlist-labmda-s3-736680823693
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "s3:*"
+      Resource: "arn:aws:s3:::${self:provider.environment.BUCKET}/*"
+
+functions:
+  scrapyFunction:
+    image: 736680823693.dkr.ecr.us-east-1.amazonaws.com/lambda-images:latest
+    events:
+      - http:
+          path: scrape
+          method: post
+          cors: true
