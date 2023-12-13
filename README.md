@@ -5,4 +5,3 @@ This app contains code to preform the following:
 4. create Lambda function that scrapes Toys for Tots lists 
 5. Displays data in quicksite dashboard 
 
-

@@ -4,13 +4,13 @@ from bs4 import BeautifulSoup
 from pyppeteer import launch
 from tabulate import tabulate
 urls = [
-    "https://www.amazon.com/hz/wishlist/ls/143YHNGKKD0M0", #South East
-    "https://www.amazon.com/hz/wishlist/ls/12XNX7IX4F90T", #North Central
-    "https://www.amazon.com/hz/wishlist/ls/15I8V2W62KAM5", #North East
-    "https://www.amazon.com/hz/wishlist/ls/1O9KCEX2M66V5", #South Central
-    "https://www.amazon.com/hz/wishlist/ls/189ERQGRHTIED", #North West
-    "https://www.amazon.com/hz/wishlist/ls/TIH9LADIA5FK" #South West
-    "https://a.co/h27Hqol"
+    "https://a.co/8aPxviZ", #SW
+    "https://a.co/cJ5GTqX", #NW
+    "https://a.co/4TDgx49", #NC
+    "https://a.co/41Hiorg", #SC
+    "https://a.co/74friED", #NE
+    "https://a.co/2qLQt8Q", #SE
+    "https://a.co/2HMl56m", #TR
 ]
 
 async def get(amazon_url: str, scroll_times: int) -> str:
